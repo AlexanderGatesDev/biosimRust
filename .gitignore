@@ -5,3 +5,10 @@ logs/*
 logs/epoch-log.txt
 tools/net.txt
 tools/net.svg
+build-all.sh
+.gitignore
+release/biosimrust-1.0.0/biosimrust-windows-x64.exe
+release/biosimrust-1.0.0/biosimrust-macos-arm64
+release/biosimrust-1.0.0/SHA256SUMS
+build-windows.sh
+.cargo/*
