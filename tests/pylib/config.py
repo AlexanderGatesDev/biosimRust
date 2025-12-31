@@ -7,7 +7,7 @@
     wrap load() and save() operations.
     """
 
-from configparser import SafeConfigParser
+from configparser import ConfigParser as SafeConfigParser
 
 # Signal is used in class methods write_config() at the bottom
 # of this file. Signal lock forces exection to conclude before
