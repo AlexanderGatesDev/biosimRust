@@ -88,9 +88,50 @@ fn blend_color(foreground: Rgb<u8>, background: Rgb<u8>, alpha: f32) -> Rgb<u8> 
     Rgb([r, g, b])
 }
 
-// Helper to check if a grid location is a barrier
-fn is_barrier_location(loc: Coord, barrier_locs: &[Coord]) -> bool {
-    barrier_locs.iter().any(|&b| b == loc)
+
+// Helper function to draw filled circle with gradient (for weighted challenges)
+fn draw_circle_gradient(
+    img: &mut RgbImage,
+    params: &Params,
+    width: u32,
+    height: u32,
+    center_x: f32,
+    center_y: f32,
+    radius: f32,
+    color: Rgb<u8>,
+    base_opacity: f32,
+    _barrier_locs: &[Coord],
+) {
+    // Draw filled circle with gradient opacity (stronger at center, weaker at edge)
+    // Iterate over image pixels, not grid coordinates
+    let scale = params.display_scale as f32;
+    
+    for img_y in 0..height {
+        for img_x in 0..width {
+            // Convert image coordinates back to grid coordinates
+            let grid_x = img_x as f32 / scale;
+            let grid_y = (params.size_y as f32 - 1.0) - (img_y as f32 / scale);
+            
+            // Calculate distance from center
+            let dx = grid_x - center_x;
+            let dy = grid_y - center_y;
+            let distance = (dx * dx + dy * dy).sqrt();
+            
+            if distance <= radius {
+                // Calculate opacity based on distance (1.0 at center, 0.3 at edge)
+                let distance_ratio = distance / radius;
+                let pixel_opacity = base_opacity * (1.0 - distance_ratio * 0.7); // Fade to 30% at edge
+                
+                // Draw pixel with gradient opacity
+                let background = *img.get_pixel(img_x, img_y);
+                let blended = blend_color(color, background, pixel_opacity);
+                img.put_pixel(img_x, img_y, blended);
+            }
+        }
+    }
+    
+    // Also draw the outline for clarity
+    draw_circle_outline(img, params, width, height, center_x, center_y, radius, color, base_opacity, _barrier_locs);
 }
 
 // Helper function to draw circle outline
@@ -104,7 +145,7 @@ fn draw_circle_outline(
     radius: f32, 
     color: Rgb<u8>,
     opacity: f32,
-    barrier_locs: &[Coord],
+    _barrier_locs: &[Coord],
 ) {
     use std::f32::consts::PI;
     let steps = (radius * 2.0 * PI).max(64.0) as usize;
@@ -116,16 +157,6 @@ fn draw_circle_outline(
         let y = center_y + radius * angle.sin();
         
         if x >= 0.0 && x < params.size_x as f32 && y >= 0.0 && y < params.size_y as f32 {
-            // Convert to grid coordinates to check for barriers
-            let grid_x = x as i16;
-            let grid_y = y as i16;
-            let grid_loc = Coord::new(grid_x, grid_y);
-            
-            // Skip if this location is a barrier
-            if is_barrier_location(grid_loc, barrier_locs) {
-                continue;
-            }
-            
             let img_x = (x * params.display_scale as f32) as u32;
             let img_y = ((params.size_y as f32 - 1.0 - y) * params.display_scale as f32) as u32;
             
@@ -154,16 +185,10 @@ fn draw_vertical_line(
     x: i16, 
     color: Rgb<u8>,
     opacity: f32,
-    barrier_locs: &[Coord],
+    _barrier_locs: &[Coord],
 ) {
     let img_x = (x as i32 * params.display_scale as i32) as u32;
     for y in 0..params.size_y as i16 {
-        // Check if this grid location is a barrier
-        let grid_loc = Coord::new(x, y);
-        if is_barrier_location(grid_loc, barrier_locs) {
-            continue;
-        }
-        
         let img_y = ((params.size_y as i32 - 1 - y as i32) * params.display_scale as i32) as u32;
         
         for dy in -1..=1 {
@@ -188,21 +213,18 @@ fn draw_border_outline(
     height: u32,
     color: Rgb<u8>,
     opacity: f32,
-    barrier_locs: &[Coord],
+    _barrier_locs: &[Coord],
 ) {
     // Top edge (y = size_y - 1 in grid coordinates)
     for x in 0..params.size_x as i16 {
-        let grid_loc = Coord::new(x, (params.size_y - 1) as i16);
-        if !is_barrier_location(grid_loc, barrier_locs) {
-            let img_x = (x as i32 * params.display_scale as i32) as u32;
-            for dx in -1..=1 {
-                let px = (img_x as i32 + dx) as u32;
-                if px < width {
-                    for py in 0..3.min(height) {
-                        let background = *img.get_pixel(px, py);
-                        let blended = blend_color(color, background, opacity);
-                        img.put_pixel(px, py, blended);
-                    }
+        let img_x = (x as i32 * params.display_scale as i32) as u32;
+        for dx in -1..=1 {
+            let px = (img_x as i32 + dx) as u32;
+            if px < width {
+                for py in 0..3.min(height) {
+                    let background = *img.get_pixel(px, py);
+                    let blended = blend_color(color, background, opacity);
+                    img.put_pixel(px, py, blended);
                 }
             }
         }
@@ -210,17 +232,14 @@ fn draw_border_outline(
     
     // Bottom edge (y = 0 in grid coordinates)
     for x in 0..params.size_x as i16 {
-        let grid_loc = Coord::new(x, 0);
-        if !is_barrier_location(grid_loc, barrier_locs) {
-            let img_x = (x as i32 * params.display_scale as i32) as u32;
-            for dx in -1..=1 {
-                let px = (img_x as i32 + dx) as u32;
-                if px < width {
-                    for py in (height.saturating_sub(3))..height {
-                        let background = *img.get_pixel(px, py);
-                        let blended = blend_color(color, background, opacity);
-                        img.put_pixel(px, py, blended);
-                    }
+        let img_x = (x as i32 * params.display_scale as i32) as u32;
+        for dx in -1..=1 {
+            let px = (img_x as i32 + dx) as u32;
+            if px < width {
+                for py in (height.saturating_sub(3))..height {
+                    let background = *img.get_pixel(px, py);
+                    let blended = blend_color(color, background, opacity);
+                    img.put_pixel(px, py, blended);
                 }
             }
         }
@@ -228,17 +247,14 @@ fn draw_border_outline(
     
     // Left edge (x = 0)
     for y in 0..params.size_y as i16 {
-        let grid_loc = Coord::new(0, y);
-        if !is_barrier_location(grid_loc, barrier_locs) {
-            let img_y = ((params.size_y as i32 - 1 - y as i32) * params.display_scale as i32) as u32;
-            for dy in -1..=1 {
-                let py = (img_y as i32 + dy) as u32;
-                if py < height {
-                    for px in 0..3.min(width) {
-                        let background = *img.get_pixel(px, py);
-                        let blended = blend_color(color, background, opacity);
-                        img.put_pixel(px, py, blended);
-                    }
+        let img_y = ((params.size_y as i32 - 1 - y as i32) * params.display_scale as i32) as u32;
+        for dy in -1..=1 {
+            let py = (img_y as i32 + dy) as u32;
+            if py < height {
+                for px in 0..3.min(width) {
+                    let background = *img.get_pixel(px, py);
+                    let blended = blend_color(color, background, opacity);
+                    img.put_pixel(px, py, blended);
                 }
             }
         }
@@ -246,17 +262,14 @@ fn draw_border_outline(
     
     // Right edge (x = size_x - 1)
     for y in 0..params.size_y as i16 {
-        let grid_loc = Coord::new((params.size_x - 1) as i16, y);
-        if !is_barrier_location(grid_loc, barrier_locs) {
-            let img_y = ((params.size_y as i32 - 1 - y as i32) * params.display_scale as i32) as u32;
-            for dy in -1..=1 {
-                let py = (img_y as i32 + dy) as u32;
-                if py < height {
-                    for px in (width.saturating_sub(3))..width {
-                        let background = *img.get_pixel(px, py);
-                        let blended = blend_color(color, background, opacity);
-                        img.put_pixel(px, py, blended);
-                    }
+        let img_y = ((params.size_y as i32 - 1 - y as i32) * params.display_scale as i32) as u32;
+        for dy in -1..=1 {
+            let py = (img_y as i32 + dy) as u32;
+            if py < height {
+                for px in (width.saturating_sub(3))..width {
+                    let background = *img.get_pixel(px, py);
+                    let blended = blend_color(color, background, opacity);
+                    img.put_pixel(px, py, blended);
                 }
             }
         }
@@ -303,7 +316,16 @@ fn draw_challenge_area(
             draw_vertical_line(img, params, width, height, x_line, challenge_color, opacity, barrier_locs);
         }
         
-        CHALLENGE_CENTER_WEIGHTED | CHALLENGE_CENTER_UNWEIGHTED => {
+        CHALLENGE_CENTER_WEIGHTED => {
+            // Draw gradient-filled circle to show weighted nature
+            let center_x = (params.size_x / 2) as f32;
+            let center_y = (params.size_y / 2) as f32;
+            let radius = params.size_x as f32 / 3.0;
+            draw_circle_gradient(img, params, width, height, center_x, center_y, radius, challenge_color, opacity, barrier_locs);
+        }
+        
+        CHALLENGE_CENTER_UNWEIGHTED => {
+            // Draw just the outline for unweighted challenge
             let center_x = (params.size_x / 2) as f32;
             let center_y = (params.size_y / 2) as f32;
             let radius = params.size_x as f32 / 3.0;

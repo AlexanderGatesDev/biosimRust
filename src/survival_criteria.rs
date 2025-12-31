@@ -61,8 +61,8 @@ pub fn passed_survival_criterion(
         }
 
         CHALLENGE_STRING => {
-            let min_neighbors = 22u32;
-            let max_neighbors = 2u32;
+            let min_neighbors = 2u32;
+            let max_neighbors = 22u32;
             let radius = 1.5f32;
 
             if grid.is_border(indiv.loc) {
@@ -71,7 +71,8 @@ pub fn passed_survival_criterion(
 
             let mut count = 0u32;
             visit_neighborhood(indiv.loc, radius, params, |loc2| {
-                if grid.is_occupied_at(loc2) {
+                // Exclude the center location (the individual itself)
+                if loc2 != indiv.loc && grid.is_occupied_at(loc2) {
                     count += 1;
                 }
             });

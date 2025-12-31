@@ -12,3 +12,7 @@ release/biosimrust-1.0.0/biosimrust-macos-arm64
 release/biosimrust-1.0.0/SHA256SUMS
 build-windows.sh
 .cargo/*
+logs/epoch-log.txt
+release/biosimrust-1.0.1/biosimrust-macos-arm64
+release/biosimrust-1.0.1/biosimrust-windows-x64.exe
+release/biosimrust-1.0.1/SHA256SUMS
