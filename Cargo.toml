@@ -1,0 +1,26 @@
+[package]
+name = "biosimrust"
+version = "0.2.0"
+edition = "2021"
+
+[dependencies]
+rand = "0.8"
+rayon = "1.8"
+image = "0.24"
+chrono = "0.4"
+minifb = "0.24"
+# opencv = "0.88"  # Commented out until video generation is implemented
+                   # Requires libclang to be installed (Xcode command line tools or LLVM)
+
+[lib]
+name = "biosimrust"
+path = "src/lib.rs"
+
+[[bin]]
+name = "biosimrust"
+path = "src/main.rs"
+
+[[test]]
+name = "unit_tests"
+path = "tests/unit_tests.rs"
+
