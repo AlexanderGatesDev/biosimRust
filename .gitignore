@@ -1,3 +1,7 @@
 target/*
 images/*
 logs/*
+.DS_Store
+logs/epoch-log.txt
+tools/net.txt
+tools/net.svg

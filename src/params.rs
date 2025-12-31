@@ -45,6 +45,9 @@ pub struct Params {
     pub display_enabled: bool,
     pub display_challenge_area: bool,
     pub display_challenge_area_opacity: f32,
+    pub display_challenge_area_r: u8,
+    pub display_challenge_area_g: u8,
+    pub display_challenge_area_b: u8,
     pub genome_analysis_stride: u32,
     pub display_sample_genomes: u32,
     pub genome_comparison_method: u32,
@@ -106,6 +109,9 @@ impl Default for Params {
             display_enabled: true,
             display_challenge_area: false,
             display_challenge_area_opacity: 0.5,
+            display_challenge_area_r: 255,
+            display_challenge_area_g: 255,
+            display_challenge_area_b: 0,
             genome_analysis_stride: 25,
             display_sample_genomes: 5,
             genome_comparison_method: 1,
@@ -334,6 +340,29 @@ impl ParamManager {
             }
             "displaychallengeareaopacity" if is_float && d_val >= 0.0 && d_val <= 1.0 => {
                 self.priv_params.display_challenge_area_opacity = d_val as f32;
+            }
+            "displaychallengeareacolor" => {
+                // Parse comma-separated RGB values: "255,255,0"
+                let parts: Vec<&str> = val.split(',').map(|s| s.trim()).collect();
+                if parts.len() == 3 {
+                    if let (Ok(r), Ok(g), Ok(b)) = (
+                        parts[0].parse::<u32>(),
+                        parts[1].parse::<u32>(),
+                        parts[2].parse::<u32>(),
+                    ) {
+                        if r <= 255 && g <= 255 && b <= 255 {
+                            self.priv_params.display_challenge_area_r = r as u8;
+                            self.priv_params.display_challenge_area_g = g as u8;
+                            self.priv_params.display_challenge_area_b = b as u8;
+                        } else {
+                            eprintln!("Invalid RGB values for displaychallengeareacolor (must be 0-255): {}", val);
+                        }
+                    } else {
+                        eprintln!("Invalid RGB format for displaychallengeareacolor (expected R,G,B): {}", val);
+                    }
+                } else {
+                    eprintln!("Invalid RGB format for displaychallengeareacolor (expected R,G,B): {}", val);
+                }
             }
             "agentsize" if is_uint && u_val > 0 => {
                 self.priv_params.agent_size = u_val;

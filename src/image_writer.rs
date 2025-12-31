@@ -273,7 +273,11 @@ fn draw_challenge_area(
 ) {
     use crate::simulator::*;
     
-    let challenge_color = Rgb([255, 255, 0]); // Yellow
+    let challenge_color = Rgb([
+        params.display_challenge_area_r,
+        params.display_challenge_area_g,
+        params.display_challenge_area_b,
+    ]);
     let opacity = params.display_challenge_area_opacity;
     
     match params.challenge {
