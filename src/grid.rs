@@ -105,16 +105,11 @@ impl Grid {
     }
 
     pub fn find_empty_location(&self, params: &Params) -> Coord {
-        // Use random search - it's fast when grid is mostly empty
-        // For a 500x500 grid with 3000 individuals, random search is much faster than systematic
-        // But if grid is getting full, fall back to systematic search quickly
         let mut attempts = 0;
-        const MAX_ATTEMPTS: u32 = 1000; // Reduced - fall back to systematic search quickly if grid is dense
+        const MAX_ATTEMPTS: u32 = 1000;
         loop {
             attempts += 1;
             if attempts > MAX_ATTEMPTS {
-                // Fallback to systematic search if random fails
-                // This happens when grid is getting full - systematic search is more reliable
                 for y in 0..params.size_y as i16 {
                     for x in 0..params.size_x as i16 {
                         let loc = Coord { x, y };
@@ -153,7 +148,6 @@ impl Grid {
             let y = random_uint_range(0, params.size_y as u32 - 1) as i16;
             let loc = Coord { x, y };
             
-            // Double-check bounds before checking if empty
             if !self.is_in_bounds(loc) {
                 continue; // Skip invalid coordinates
             }
@@ -187,8 +181,6 @@ impl Default for Grid {
     }
 }
 
-// Feeds in-bounds Coords to a function: given a center location and a radius,
-// this function will call f(Coord) once for each location inside the specified area.
 pub fn visit_neighborhood<F>(loc: Coord, radius: f32, params: &Params, mut f: F)
 where
     F: FnMut(Coord),

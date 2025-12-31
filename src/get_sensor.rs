@@ -12,7 +12,6 @@ use crate::peeps::Peeps;
 use crate::basic_types::{Coord, Dir, Compass};
 use crate::genome_compare::genome_similarity as genome_similarity_with_params;
 
-// Helper function: Get population density along a specific axis
 fn get_population_density_along_axis(
     loc: Coord,
     dir: Dir,
@@ -47,7 +46,6 @@ fn get_population_density_along_axis(
     sensor_val as f32
 }
 
-// Helper function: Get short probe barrier distance
 fn get_short_probe_barrier_distance(
     loc0: Coord,
     dir: Dir,
@@ -86,7 +84,6 @@ fn get_short_probe_barrier_distance(
     sensor_val
 }
 
-// Helper function: Get signal density in neighborhood
 fn get_signal_density(
     layer_num: u16,
     loc: Coord,
@@ -108,7 +105,6 @@ fn get_signal_density(
     sensor_val as f32
 }
 
-// Helper function: Get signal density along axis
 fn get_signal_density_along_axis(
     layer_num: u16,
     loc: Coord,
@@ -144,7 +140,6 @@ fn get_signal_density_along_axis(
     sensor_val as f32
 }
 
-// Helper function: Long probe population forward
 fn long_probe_population_fwd(
     loc: Coord,
     dir: Dir,
@@ -169,7 +164,6 @@ fn long_probe_population_fwd(
     }
 }
 
-// Helper function: Long probe barrier forward
 fn long_probe_barrier_fwd(
     loc: Coord,
     dir: Dir,

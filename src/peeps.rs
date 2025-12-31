@@ -68,7 +68,6 @@ impl Peeps {
                         grid.set(old_loc, EMPTY);
                         grid.set(*new_loc, indiv.index);
                         indiv.loc = *new_loc;
-                        // Calculate direction of movement BEFORE updating loc
                         let move_offset = *new_loc - old_loc;
                         indiv.last_move_dir = move_offset.as_dir();
                     }

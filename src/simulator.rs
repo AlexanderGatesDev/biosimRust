@@ -67,14 +67,11 @@ impl Simulator {
         
         let params = self.param_manager.get_param_ref();
         
-        // Initialize rayon thread pool with the configured number of threads
         rayon::ThreadPoolBuilder::new()
             .num_threads(params.num_threads as usize)
             .build_global()
             .expect("Failed to initialize rayon thread pool");
         
-        // Initialize random number generator for main thread
-        // This must be done before generating any random genomes
         crate::random::initialize_random(params.deterministic, params.rng_seed, 0);
         
         self.grid.init(params.size_x, params.size_y);
@@ -90,12 +87,11 @@ impl Simulator {
     pub fn simulator(&mut self, argc: usize, argv: Vec<String>) {
         self.init(argc, argv);
         
-        // Check display_enabled right after init
         let params = self.param_manager.get_param_ref();
         if params.display_enabled {
             println!("Display enabled: {}x{} (scale: {})", params.size_x, params.size_y, params.display_scale);
         }
-        let _ = params; // Release the borrow
+        let _ = params;
         
         print_sensors_actions(); // Show the agents' capabilities
         
@@ -112,29 +108,24 @@ impl Simulator {
             let steps_per_generation = params.steps_per_generation;
             let population = params.population;
             let display_enabled = params.display_enabled;
-            let _ = params; // Release the borrow
+            let _ = params;
             
             let mut murder_count = 0u32;
             
             for sim_step in 0..steps_per_generation {
                 
-                // Parallel execution of sim_step_one_indiv
-                // Use unsafe to get mutable raw pointers for thread-local access
                 let peeps_ptr = &mut self.peeps as *mut Peeps;
                 let grid_ptr = &self.grid as *const Grid;
                 let signals_ptr = &mut self.signals as *mut Signals;
                 let param_manager_ptr = &self.param_manager as *const ParamManager;
                 
-                // Convert raw pointers to usize (which is definitely Send) for parallel execution
                 let peeps_ptr_usize = peeps_ptr as usize;
                 let grid_ptr_usize = grid_ptr as usize;
                 let signals_ptr_usize = signals_ptr as usize;
                 let param_manager_ptr_usize = param_manager_ptr as usize;
                 
-                // Use rayon::scope to create a parallel scope
                 rayon::scope(|s| {
                     for index in 1..=population {
-                        // Copy pointer values for each thread
                         let peeps_ptr_usize = peeps_ptr_usize;
                         let grid_ptr_usize = grid_ptr_usize;
                         let signals_ptr_usize = signals_ptr_usize;
@@ -142,11 +133,6 @@ impl Simulator {
                         let sim_step_local = sim_step;
                         
                         s.spawn(move |_| {
-                            // Convert usize back to raw pointers
-                            // Safety: Each thread operates on a unique `indiv` from `peeps`
-                            // and `signals` is accessed with thread-safe `increment`
-                            // `grid` and `param_manager` are read-only
-                            // Raw pointers are safe here because each thread accesses a different index
                             unsafe {
                                 let peeps_ptr = peeps_ptr_usize as *mut Peeps;
                                 let grid_ptr = grid_ptr_usize as *const Grid;
@@ -160,9 +146,8 @@ impl Simulator {
                                     let signals_ref = &mut *signals_ptr;
                                     let param_manager_ref = &*param_manager_ptr;
                                     let params_ref = param_manager_ref.get_param_ref();
-                                    let peeps_ref = &*peeps_ptr; // Immutable reference for feed_forward
+                                    let peeps_ref = &*peeps_ptr;
 
-                                    // Initialize thread-local RNG
                                     crate::random::initialize_random(params_ref.deterministic, params_ref.rng_seed, rayon::current_thread_index().unwrap_or(0));
 
                                     indiv.age += 1;
@@ -176,14 +161,13 @@ impl Simulator {
                                     );
 
                                     let _ = params_ref;
-
-                                    // execute_actions needs peeps to queue movements
                                     let params_ref = param_manager_ref.get_param_ref();
                                     crate::execute_actions::execute_actions(
                                         indiv,
                                         &action_levels,
                                         params_ref,
                                         peeps_ref,
+                                        grid_ref,
                                         signals_ref,
                                     );
                                 }

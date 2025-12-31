@@ -9,3 +9,4 @@ build-all.sh
 release/*
 build-windows.sh
 .cargo/*
+cpp/*

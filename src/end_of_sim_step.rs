@@ -79,9 +79,7 @@ pub fn end_of_sim_step(
 
     peeps.drain_death_queue(grid);
     peeps.drain_move_queue(grid);
-    signals.fade(0, params); // Fade layer 0
-
-    // Save video frame (or display frame if display is enabled)
+    signals.fade(0, params);
     let should_save_frame = params.save_video
         && ((generation % params.video_stride == 0)
             || generation <= params.video_save_first_frames
@@ -90,11 +88,8 @@ pub fn end_of_sim_step(
                     <= params.parameter_change_generation_number
                         + params.video_save_first_frames));
     
-    // Always generate frames if display is enabled, regardless of save_video
     if should_save_frame || params.display_enabled {
-        if !image_writer.save_video_frame_sync(sim_step, generation, grid, peeps, params) {
-            // imageWriter busy
-        }
+        let _ = image_writer.save_video_frame_sync(sim_step, generation, grid, peeps, params);
     }
 }
 

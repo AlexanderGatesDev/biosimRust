@@ -6,6 +6,7 @@ use crate::sensors_actions::{NUM_ACTIONS, ACTION_MIN, ACTION_RANGE};
 use crate::random::{random_uint, RANDOM_UINT_MAX};
 use crate::params::Params;
 use crate::peeps::Peeps;
+use crate::grid::Grid;
 use crate::signals::Signals;
 use crate::basic_types::Coord;
 
@@ -25,7 +26,7 @@ fn is_enabled(action: Action, action_levels: &[f32; NUM_ACTIONS]) -> bool {
         return false;
     }
     let level = action_levels[idx];
-    let level01 = (level.tanh() + 1.0) / 2.0; // Convert to 0.0..1.0
+    let level01 = (level.tanh() + 1.0) / 2.0;
     level01 > ACTION_MIN && prob2bool((level01 - ACTION_MIN) / ACTION_RANGE)
 }
 
@@ -34,6 +35,7 @@ pub fn execute_actions(
     action_levels: &[f32; NUM_ACTIONS],
     params: &Params,
     peeps: &Peeps,
+    grid: &Grid,
     signals: &mut Signals,
 ) {
     // Responsiveness action
@@ -55,10 +57,11 @@ pub fn execute_actions(
     
     // Set longProbeDistance
     if (Action::SetLongprobeDist as usize) < NUM_ACTIONS {
+        const MAX_LONG_PROBE_DISTANCE: u32 = 32;
         let level = action_levels[Action::SetLongprobeDist as usize];
         let level01 = (level.tanh() + 1.0) / 2.0;
-        let new_dist = 1 + (level01 * (params.long_probe_distance as f32 - 1.0)) as u32;
-        indiv.long_probe_dist = new_dist.max(1).min(params.long_probe_distance);
+        let new_dist = 1 + (level01 * MAX_LONG_PROBE_DISTANCE as f32) as u32;
+        indiv.long_probe_dist = new_dist;
     }
     
     // Kill forward action
@@ -67,43 +70,37 @@ pub fn execute_actions(
         if kill_idx < NUM_ACTIONS {
             const KILL_THRESHOLD: f32 = 0.5;
             let mut level = action_levels[kill_idx];
-            level = (level.tanh() + 1.0) / 2.0; // Convert to 0.0..1.0
+            level = (level.tanh() + 1.0) / 2.0;
             level *= responsiveness_adjusted;
             if level > KILL_THRESHOLD && prob2bool((level - ACTION_MIN) / ACTION_RANGE) {
                 let other_loc = indiv.loc + indiv.last_move_dir.as_normalized_coord();
-                if params.size_x > 0 && params.size_y > 0 {
-                    // Check bounds and if occupied
-                    if other_loc.x >= 0 && other_loc.x < params.size_x as i16
-                        && other_loc.y >= 0 && other_loc.y < params.size_y as i16
-                    {
-                        // We can't directly access grid here, so we'll need to queue this
-                        // For now, skip kill action - it requires grid access
+                if grid.is_in_bounds(other_loc) && grid.is_occupied_at(other_loc) {
+                    if let Some(target_indiv) = peeps.get_indiv(other_loc, grid) {
+                        let distance = (indiv.loc - target_indiv.loc).length();
+                        if distance == 1 {
+                            peeps.queue_for_death(target_indiv);
+                        }
                     }
                 }
             }
         }
     }
     
-    // Signal emission
+    // Emit signal0
     if is_enabled(Action::EmitSignal0, action_levels) {
-        let level = action_levels[Action::EmitSignal0 as usize];
-        let level01 = (level.tanh() + 1.0) / 2.0;
-        // Only emit if level is above threshold
-        if level01 > 0.5 {
+        const EMIT_THRESHOLD: f32 = 0.5;
+        let mut level = action_levels[Action::EmitSignal0 as usize];
+        level = (level.tanh() + 1.0) / 2.0;
+        level *= responsiveness_adjusted;
+        if level > EMIT_THRESHOLD && prob2bool(level) {
             signals.increment(0, indiv.loc, params);
         }
     }
     
-    // ------------- Movement action neurons ---------------
-    
+    // Movement action neurons
     let last_move_offset = indiv.last_move_dir.as_normalized_coord();
-    
-    // moveX, moveY will be the accumulators that hold the sum of all movement urges
-    // For movement, we use the raw action levels, not is_enabled (which is for probability-based actions)
     let mut move_x = action_levels[Action::MoveX as usize];
     let mut move_y = action_levels[Action::MoveY as usize];
-    
-    // Add directional movement urges (always add, don't check is_enabled for movement)
     move_x += action_levels[Action::MoveEast as usize];
     move_x -= action_levels[Action::MoveWest as usize];
     move_y += action_levels[Action::MoveNorth as usize];
@@ -138,34 +135,23 @@ pub fn execute_actions(
     move_x += offset_random.x as f32 * level_random;
     move_y += offset_random.y as f32 * level_random;
     
-    // Convert accumulated X, Y sums to range -1.0..1.0 and scale by responsiveness
     move_x = move_x.tanh();
     move_y = move_y.tanh();
     move_x *= responsiveness_adjusted;
     move_y *= responsiveness_adjusted;
     
-    // The probability of movement along each axis is the absolute value
-    // prob2bool converts abs(level) to a probability 0.0..1.0
     let prob_x = if prob2bool(move_x.abs()) { 1i16 } else { 0i16 };
     let prob_y = if prob2bool(move_y.abs()) { 1i16 } else { 0i16 };
     
-    // The direction of movement (if any) along each axis is the sign
     let signum_x = if move_x < 0.0 { -1i16 } else { 1i16 };
     let signum_y = if move_y < 0.0 { -1i16 } else { 1i16 };
-    
-    // Generate a normalized movement offset, where each component is -1, 0, or 1
     let movement_offset = Coord {
         x: prob_x * signum_x,
         y: prob_y * signum_y,
     };
     
-    // Move there if it's a valid location
     let new_loc = indiv.loc + movement_offset;
-    if new_loc.x >= 0 && new_loc.x < params.size_x as i16
-        && new_loc.y >= 0 && new_loc.y < params.size_y as i16
-    {
-        // Queue movement - drain_move_queue will check if the location is empty
-        // Only queue if there's actual movement (not staying in place)
+    if grid.is_in_bounds(new_loc) && grid.is_empty_at(new_loc) {
         if movement_offset.x != 0 || movement_offset.y != 0 {
             peeps.queue_for_move(indiv, new_loc);
         }

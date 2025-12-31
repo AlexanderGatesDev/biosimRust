@@ -65,7 +65,6 @@ pub struct Params {
     pub log_dir: String,
     pub image_dir: String,
     pub graph_log_update_command: String,
-    // These are updated automatically and not set via the parameter file
     pub parameter_change_generation_number: u32,
 }
 
@@ -147,7 +146,6 @@ impl ParamManager {
     }
 
     pub fn set_defaults(&mut self) {
-        // Already set by Default trait
     }
 
     pub fn register_config_file(&mut self, filename: &str) {

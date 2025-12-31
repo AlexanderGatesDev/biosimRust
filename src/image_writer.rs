@@ -46,7 +46,6 @@ fn make_genetic_color(genome: &Genome) -> u8 {
         | ((genome[genome.len() - 1].source_num & 1) << 7)
 }
 
-// Convert genetic color to RGB
 fn genetic_color_to_rgb(color: u8) -> (u8, u8, u8) {
     let r = color;
     let g = (color & 0x1f) << 3;
@@ -79,7 +78,6 @@ fn genetic_color_to_rgb(color: u8) -> (u8, u8, u8) {
     (r, g, b)
 }
 
-// Helper function for alpha blending
 fn blend_color(foreground: Rgb<u8>, background: Rgb<u8>, alpha: f32) -> Rgb<u8> {
     let alpha = alpha.max(0.0).min(1.0);
     let r = (foreground[0] as f32 * alpha + background[0] as f32 * (1.0 - alpha)) as u8;
@@ -89,7 +87,6 @@ fn blend_color(foreground: Rgb<u8>, background: Rgb<u8>, alpha: f32) -> Rgb<u8> 
 }
 
 
-// Helper function to draw filled circle with gradient (for weighted challenges)
 fn draw_circle_gradient(
     img: &mut RgbImage,
     params: &Params,
@@ -102,39 +99,30 @@ fn draw_circle_gradient(
     base_opacity: f32,
     _barrier_locs: &[Coord],
 ) {
-    // Draw filled circle with gradient opacity (stronger at center, weaker at edge)
-    // Iterate over image pixels, not grid coordinates
     let scale = params.display_scale as f32;
     
     for img_y in 0..height {
         for img_x in 0..width {
-            // Convert image coordinates back to grid coordinates
             let grid_x = img_x as f32 / scale;
             let grid_y = (params.size_y as f32 - 1.0) - (img_y as f32 / scale);
             
-            // Calculate distance from center
             let dx = grid_x - center_x;
             let dy = grid_y - center_y;
             let distance = (dx * dx + dy * dy).sqrt();
             
             if distance <= radius {
-                // Calculate opacity based on distance (1.0 at center, 0.3 at edge)
                 let distance_ratio = distance / radius;
-                let pixel_opacity = base_opacity * (1.0 - distance_ratio * 0.7); // Fade to 30% at edge
+                let pixel_opacity = base_opacity * (1.0 - distance_ratio * 0.7);
                 
-                // Draw pixel with gradient opacity
                 let background = *img.get_pixel(img_x, img_y);
                 let blended = blend_color(color, background, pixel_opacity);
                 img.put_pixel(img_x, img_y, blended);
             }
         }
     }
-    
-    // Also draw the outline for clarity
     draw_circle_outline(img, params, width, height, center_x, center_y, radius, color, base_opacity, _barrier_locs);
 }
 
-// Helper function to draw circle outline
 fn draw_circle_outline(
     img: &mut RgbImage, 
     params: &Params, 
@@ -176,7 +164,6 @@ fn draw_circle_outline(
     }
 }
 
-// Helper function to draw vertical line
 fn draw_vertical_line(
     img: &mut RgbImage, 
     params: &Params, 
@@ -205,7 +192,6 @@ fn draw_vertical_line(
     }
 }
 
-// Helper function to draw border outline
 fn draw_border_outline(
     img: &mut RgbImage, 
     params: &Params, 
@@ -215,7 +201,6 @@ fn draw_border_outline(
     opacity: f32,
     _barrier_locs: &[Coord],
 ) {
-    // Top edge (y = size_y - 1 in grid coordinates)
     for x in 0..params.size_x as i16 {
         let img_x = (x as i32 * params.display_scale as i32) as u32;
         for dx in -1..=1 {
@@ -230,7 +215,6 @@ fn draw_border_outline(
         }
     }
     
-    // Bottom edge (y = 0 in grid coordinates)
     for x in 0..params.size_x as i16 {
         let img_x = (x as i32 * params.display_scale as i32) as u32;
         for dx in -1..=1 {
@@ -397,19 +381,14 @@ fn draw_challenge_area(
     }
 }
 
-// Convert RGB image to buffer for minifb
-// minifb expects pixels in 0xRRGGBB format (24-bit RGB)
 fn image_to_buffer(img: &RgbImage) -> Vec<u32> {
     let width = img.width() as usize;
     let height = img.height() as usize;
     let mut buffer = Vec::with_capacity(width * height);
     
-    // Iterate row by row (y from 0 to height-1)
     for y in 0..height {
         for x in 0..width {
             let pixel = img.get_pixel(x as u32, y as u32);
-            // minifb expects 0xRRGGBB format (24-bit RGB, big-endian)
-            // pixel[0] = R, pixel[1] = G, pixel[2] = B
             let rgb = ((pixel[0] as u32) << 16)
                     | ((pixel[1] as u32) << 8)
                     | (pixel[2] as u32);
@@ -420,18 +399,15 @@ fn image_to_buffer(img: &RgbImage) -> Vec<u32> {
     buffer
 }
 
-// Save one frame immediately and optionally display it
 fn save_one_frame_immed(data: &ImageFrameData, params: &Params, window: &Arc<Mutex<Option<Window>>>) {
     let width = (params.size_x as u32 * params.display_scale) as u32;
     let height = (params.size_y as u32 * params.display_scale) as u32;
     
-    // Create white background image
     let mut img: RgbImage = ImageBuffer::new(width, height);
     for pixel in img.pixels_mut() {
         *pixel = Rgb([255, 255, 255]);
     }
     
-    // Draw barriers (gray)
     let barrier_color = Rgb([0x88, 0x88, 0x88]);
     for loc in &data.barrier_locs {
         let x1 = (loc.x * params.display_scale as i16 - params.display_scale as i16 / 2).max(0) as u32;
@@ -448,26 +424,18 @@ fn save_one_frame_immed(data: &ImageFrameData, params: &Params, window: &Arc<Mut
         }
     }
     
-    // Draw challenge area highlight if enabled
     if params.display_challenge_area {
         draw_challenge_area(&mut img, params, width, height, &data.barrier_locs);
     }
     
-    // Draw agents
     for (i, loc) in data.indiv_locs.iter().enumerate() {
         if i < data.indiv_colors.len() {
             let color = genetic_color_to_rgb(data.indiv_colors[i]);
             let agent_color = Rgb([color.0, color.1, color.2]);
             
-            // Convert grid coordinates to image coordinates
-            // Grid: (0,0) is bottom-left, x increases right, y increases up
-            // Image: (0,0) is top-left, x increases right, y increases down
-            // So we flip Y: image_y = (size_y - 1 - grid_y) * scale
             let center_x = (loc.x as i32 * params.display_scale as i32) as u32;
             let center_y = ((params.size_y as i32 - 1 - loc.y as i32) * params.display_scale as i32) as u32;
             let radius = params.agent_size as u32;
-            
-            // Draw circle for agent
             for dy in -(radius as i32)..=(radius as i32) {
                 for dx in -(radius as i32)..=(radius as i32) {
                     if dx * dx + dy * dy <= (radius * radius) as i32 {
