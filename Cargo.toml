@@ -9,8 +9,6 @@ rayon = "1.8"
 image = "0.24"
 chrono = "0.4"
 minifb = "0.24"
-# opencv = "0.88"  # Commented out until video generation is implemented
-                   # Requires libclang to be installed (Xcode command line tools or LLVM)
 
 [lib]
 name = "biosimrust"
