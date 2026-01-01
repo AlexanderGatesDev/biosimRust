@@ -266,6 +266,7 @@ fn draw_challenge_area(
     params: &Params, 
     width: u32, 
     height: u32,
+    sim_step: u32,
     barrier_locs: &[Coord],
 ) {
     use crate::simulator::*;
@@ -349,7 +350,47 @@ fn draw_challenge_area(
             }
         }
         
-        CHALLENGE_RADIOACTIVE_WALLS | CHALLENGE_AGAINST_ANY_WALL | CHALLENGE_TOUCH_ANY_WALL => {
+        CHALLENGE_RADIOACTIVE_WALLS => {
+            // Determine which wall is radioactive based on sim_step
+            let radioactive_x = if sim_step < params.steps_per_generation / 2 {
+                0i16  // West wall (left)
+            } else {
+                (params.size_x - 1) as i16  // East wall (right)
+            };
+            
+            // Draw gradient from radioactive wall to half-line
+            // Danger falls off exponentially, reaching zero at the arena half line
+            let max_distance = params.size_x as f32 / 2.0;
+            
+            let scale = params.display_scale as f32;
+            
+            for img_y in 0..height {
+                for img_x in 0..width {
+                    let grid_x = img_x as f32 / scale;
+                    
+                    // Calculate distance from radioactive wall
+                    let distance = if radioactive_x == 0 {
+                        grid_x  // Distance from left wall
+                    } else {
+                        (params.size_x as f32 - 1.0) - grid_x  // Distance from right wall
+                    };
+                    
+                    // Only draw gradient in the dangerous zone (within half the grid)
+                    if distance < max_distance {
+                        // Opacity decreases with distance (exponential falloff like the death chance)
+                        // At distance 0: full opacity, at distance max_distance: zero opacity
+                        let distance_ratio = distance / max_distance;
+                        let pixel_opacity = opacity * (1.0 - distance_ratio);
+                        
+                        let background = *img.get_pixel(img_x, img_y);
+                        let blended = blend_color(challenge_color, background, pixel_opacity);
+                        img.put_pixel(img_x, img_y, blended);
+                    }
+                }
+            }
+        }
+        
+        CHALLENGE_AGAINST_ANY_WALL | CHALLENGE_TOUCH_ANY_WALL => {
             draw_border_outline(img, params, width, height, challenge_color, opacity, barrier_locs);
         }
         
@@ -425,7 +466,7 @@ fn save_one_frame_immed(data: &ImageFrameData, params: &Params, window: &Arc<Mut
     }
     
     if params.display_challenge_area {
-        draw_challenge_area(&mut img, params, width, height, &data.barrier_locs);
+        draw_challenge_area(&mut img, params, width, height, data.sim_step, &data.barrier_locs);
     }
     
     for (i, loc) in data.indiv_locs.iter().enumerate() {

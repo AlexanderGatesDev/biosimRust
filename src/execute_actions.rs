@@ -68,7 +68,7 @@ pub fn execute_actions(
     if params.kill_enable {
         let kill_idx = Action::KillForward as usize;
         if kill_idx < NUM_ACTIONS {
-            const KILL_THRESHOLD: f32 = 0.5;
+            const KILL_THRESHOLD: f32 = 0.95;
             let mut level = action_levels[kill_idx];
             level = (level.tanh() + 1.0) / 2.0;
             level *= responsiveness_adjusted;

@@ -60,8 +60,8 @@ pub enum Action {
     MoveLeft,               // W
     MoveRight,              // W
     MoveReverse,            // W
-    NumActions,             // <<----------------- END OF ACTIVE ACTIONS MARKER
     KillForward,            // W
+    NumActions,             // <<----------------- END OF ACTIVE ACTIONS MARKER
 }
 
 impl Sensor {
