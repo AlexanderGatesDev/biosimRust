@@ -210,7 +210,12 @@ pub fn passed_survival_criterion(
         CHALLENGE_MIGRATE_DISTANCE => {
             let distance = (indiv.loc - indiv.birth_loc).length() as f32;
             let max_size = params.size_x.max(params.size_y) as f32;
-            (true, distance / max_size)
+            let required_distance = max_size / 2.0;
+            if distance >= required_distance {
+                (true, distance / max_size)
+            } else {
+                (false, 0.0)
+            }
         }
 
         CHALLENGE_EAST_WEST_EIGHTHS => {
