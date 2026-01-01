@@ -138,8 +138,12 @@ pub fn hamming_distance_bytes(genome1: &Genome, genome2: &Genome) -> f32 {
 }
 
 // Returns 0.0..1.0
-// ToDo: optimize by approximation for long genomes
 pub fn genome_similarity(g1: &Genome, g2: &Genome, params: &Params) -> f32 {
+    // If genomes have different lengths, use Jaro-Winkler (method 0) which handles unequal lengths
+    if g1.len() != g2.len() {
+        return jaro_winkler_distance(g1, g2);
+    }
+    
     match params.genome_comparison_method {
         0 => jaro_winkler_distance(g1, g2),
         1 => hamming_distance_bits(g1, g2),
