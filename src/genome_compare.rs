@@ -80,7 +80,24 @@ pub fn jaro_winkler_distance(genome1: &Genome, genome2: &Genome) -> f32 {
 
     // Jaro distance
     let dw = ((m as f32 / sl as f32) + (m as f32 / al as f32) + ((m - t) as f32 / m as f32)) / 3.0;
-    dw
+
+    // Winkler prefix bonus: boost similarity if genomes start similarly
+    const MAX_PREFIX_LENGTH: i32 = 4;
+    let prefix_length = MAX_PREFIX_LENGTH.min(sl.min(al));
+    let mut matching_prefix = 0i32;
+    for i in 0..prefix_length {
+        if genes_match(&s[i as usize], &a[i as usize]) {
+            matching_prefix += 1;
+        } else {
+            break;
+        }
+    }
+
+    // Winkler scaling factor (typically 0.1)
+    const WINKLER_SCALING: f32 = 0.1;
+    let winkler_bonus = WINKLER_SCALING * matching_prefix as f32 * (1.0 - dw);
+
+    (dw + winkler_bonus).min(1.0)
 }
 
 // Works only for genomes of equal length
@@ -139,12 +156,34 @@ pub fn hamming_distance_bytes(genome1: &Genome, genome2: &Genome) -> f32 {
 
 // Returns 0.0..1.0
 pub fn genome_similarity(g1: &Genome, g2: &Genome, params: &Params) -> f32 {
+    let similarity;
+    
     // If genomes have different lengths, use Jaro-Winkler (method 0) which handles unequal lengths
     if g1.len() != g2.len() {
-        return jaro_winkler_distance(g1, g2);
+        similarity = jaro_winkler_distance(g1, g2);
+        
+        // Add length penalty to prevent convergence to extreme lengths
+        // Penalize based on relative length difference
+        let len1 = g1.len() as f32;
+        let len2 = g2.len() as f32;
+        let length_ratio = len1.min(len2) / len1.max(len2);
+        
+        // Add absolute length penalty: penalize genomes that deviate from initial length
+        // This creates selection pressure to maintain lengths near the starting value
+        let initial_length = params.genome_initial_length_min as f32;
+        let avg_length = (len1 + len2) / 2.0;
+        let length_deviation = (avg_length - initial_length).abs() / initial_length;
+        // Penalty increases quadratically with deviation (0.0 at initial, 1.0 at 2x initial)
+        let absolute_penalty = (length_deviation / 2.0).min(1.0);
+        let absolute_bonus = 1.0 - absolute_penalty;
+        
+        // Apply penalties: 30% similarity, 35% relative length ratio, 35% absolute length bonus
+        // Strengthened length penalties to better prevent genome length growth
+        // This triple penalty system prevents both relative divergence and absolute growth
+        return similarity * 0.3 + length_ratio * 0.35 + absolute_bonus * 0.35;
     }
     
-    match params.genome_comparison_method {
+    similarity = match params.genome_comparison_method {
         0 => jaro_winkler_distance(g1, g2),
         1 => hamming_distance_bits(g1, g2),
         2 => hamming_distance_bytes(g1, g2),
@@ -152,7 +191,9 @@ pub fn genome_similarity(g1: &Genome, g2: &Genome, params: &Params) -> f32 {
             eprintln!("Invalid genome comparison method: {}", params.genome_comparison_method);
             hamming_distance_bits(g1, g2) // Default fallback
         }
-    }
+    };
+    
+    similarity
 }
 
 // Returns 0.0..1.0

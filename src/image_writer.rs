@@ -542,7 +542,7 @@ fn save_one_frame_immed(data: &ImageFrameData, params: &Params, window: &Arc<Mut
         }
     }
     
-    // Save frame as PNG
+    // Save frame as PNG (required for ffmpeg video generation)
     let image_dir = Path::new(&params.image_dir);
     if !image_dir.exists() {
         let _ = fs::create_dir_all(image_dir);

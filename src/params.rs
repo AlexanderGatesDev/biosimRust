@@ -66,6 +66,7 @@ pub struct Params {
     pub image_dir: String,
     pub graph_log_update_command: String,
     pub parameter_change_generation_number: u32,
+    pub fitness_length_normalization: f32,
 }
 
 impl Default for Params {
@@ -120,6 +121,7 @@ impl Default for Params {
             rng_seed: 12345678,
             graph_log_update_command: "/usr/bin/gnuplot --persist ./tools/graphlog.gp".to_string(),
             parameter_change_generation_number: 0,
+            fitness_length_normalization: 0.03,
         }
     }
 }
@@ -284,6 +286,9 @@ impl ParamManager {
             }
             "deletionratio" if is_float && d_val >= 0.0 && d_val <= 1.0 => {
                 self.priv_params.deletion_ratio = d_val;
+            }
+            "fitnesslengthnormalization" if is_float && d_val >= 0.0 => {
+                self.priv_params.fitness_length_normalization = d_val as f32;
             }
             "killenable" if is_bool => {
                 self.priv_params.kill_enable = b_val;

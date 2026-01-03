@@ -73,7 +73,11 @@ pub fn spawn_new_generation(
             if let Some(indiv) = peeps.get(index as u16) {
                 let (passed, score) = passed_survival_criterion(indiv, params.challenge, params, grid);
                 if passed && !indiv.nnet.connections.is_empty() {
-                    parents.push((index as u16, score));
+                    // Normalize fitness by genome length to prevent selection pressure for longer genomes
+                    // Formula: normalized_score = score / (1 + beta * genome_length)
+                    let genome_length = indiv.genome.len() as f32;
+                    let normalized_score = score / (1.0 + params.fitness_length_normalization * genome_length);
+                    parents.push((index as u16, normalized_score));
                 }
             }
         }
@@ -86,7 +90,10 @@ pub fn spawn_new_generation(
             if let Some(indiv) = peeps.get(index as u16) {
                 let (passed, score) = passed_survival_criterion(indiv, CHALLENGE_ALTRUISM, params, grid);
                 if passed && !indiv.nnet.connections.is_empty() {
-                    parents.push((index as u16, score));
+                    // Normalize fitness by genome length
+                    let genome_length = indiv.genome.len() as f32;
+                    let normalized_score = score / (1.0 + params.fitness_length_normalization * genome_length);
+                    parents.push((index as u16, normalized_score));
                 } else {
                     let (passed_sacrifice, _) = passed_survival_criterion(indiv, CHALLENGE_ALTRUISM_SACRIFICE, params, grid);
                     if passed_sacrifice && !indiv.nnet.connections.is_empty() {

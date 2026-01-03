@@ -10,6 +10,7 @@ use crate::end_of_generation::end_of_generation;
 use crate::spawn_new_generation::{initialize_generation_0, spawn_new_generation};
 use crate::analysis::print_sensors_actions;
 use crate::analysis::display_sample_genomes;
+use rayon::prelude::*;
 
 // Challenge constants
 pub const CHALLENGE_CIRCLE: u32 = 0;
@@ -124,55 +125,45 @@ impl Simulator {
                 let signals_ptr_usize = signals_ptr as usize;
                 let param_manager_ptr_usize = param_manager_ptr as usize;
                 
-                rayon::scope(|s| {
-                    for index in 1..=population {
-                        let peeps_ptr_usize = peeps_ptr_usize;
-                        let grid_ptr_usize = grid_ptr_usize;
-                        let signals_ptr_usize = signals_ptr_usize;
-                        let param_manager_ptr_usize = param_manager_ptr_usize;
-                        let sim_step_local = sim_step;
+                // Use parallel iterator instead of spawning individual tasks
+                // This properly chunks work across threads like OpenMP's schedule(auto)
+                (1..=population).into_par_iter().for_each(|index| {
+                    unsafe {
+                        let peeps_ptr = peeps_ptr_usize as *mut Peeps;
+                        let grid_ptr = grid_ptr_usize as *const Grid;
+                        let signals_ptr = signals_ptr_usize as *mut Signals;
+                        let param_manager_ptr = param_manager_ptr_usize as *const ParamManager;
                         
-                        s.spawn(move |_| {
-                            unsafe {
-                                let peeps_ptr = peeps_ptr_usize as *mut Peeps;
-                                let grid_ptr = grid_ptr_usize as *const Grid;
-                                let signals_ptr = signals_ptr_usize as *mut Signals;
-                                let param_manager_ptr = param_manager_ptr_usize as *const ParamManager;
-                                
-                                let indiv_ptr = (*peeps_ptr).individuals.as_mut_ptr().add(index as usize);
-                                let indiv = &mut *indiv_ptr;
-                                if indiv.alive {
-                                    let grid_ref = &*grid_ptr;
-                                    let signals_ref = &mut *signals_ptr;
-                                    let param_manager_ref = &*param_manager_ptr;
-                                    let params_ref = param_manager_ref.get_param_ref();
-                                    let peeps_ref = &*peeps_ptr;
+                        let indiv_ptr = (*peeps_ptr).individuals.as_mut_ptr().add(index as usize);
+                        let indiv = &mut *indiv_ptr;
+                        if indiv.alive {
+                            let grid_ref = &*grid_ptr;
+                            let signals_ref = &mut *signals_ptr;
+                            let param_manager_ref = &*param_manager_ptr;
+                            let params_ref = param_manager_ref.get_param_ref();
+                            let peeps_ref = &*peeps_ptr;
 
-                                    crate::random::initialize_random(params_ref.deterministic, params_ref.rng_seed, rayon::current_thread_index().unwrap_or(0));
+                            crate::random::initialize_random(params_ref.deterministic, params_ref.rng_seed, rayon::current_thread_index().unwrap_or(0));
 
-                                    indiv.age += 1;
+                            indiv.age += 1;
 
-                                    let action_levels = indiv.feed_forward(
-                                        sim_step_local,
-                                        grid_ref,
-                                        signals_ref,
-                                        params_ref,
-                                        peeps_ref,
-                                    );
+                            let action_levels = indiv.feed_forward(
+                                sim_step,
+                                grid_ref,
+                                signals_ref,
+                                params_ref,
+                                peeps_ref,
+                            );
 
-                                    let _ = params_ref;
-                                    let params_ref = param_manager_ref.get_param_ref();
-                                    crate::execute_actions::execute_actions(
-                                        indiv,
-                                        &action_levels,
-                                        params_ref,
-                                        peeps_ref,
-                                        grid_ref,
-                                        signals_ref,
-                                    );
-                                }
-                            }
-                        });
+                            crate::execute_actions::execute_actions(
+                                indiv,
+                                &action_levels,
+                                params_ref,
+                                peeps_ref,
+                                grid_ref,
+                                signals_ref,
+                            );
+                        }
                     }
                 });
                 

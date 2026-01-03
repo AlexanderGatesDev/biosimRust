@@ -225,14 +225,29 @@ pub fn random_insert_deletion(genome: &mut Genome, params: &Params) {
     
     let probability = params.gene_insertion_deletion_rate as f32;
     if (random_uint() as f32 / RANDOM_UINT_MAX as f32) < probability {
-        if (random_uint() as f32 / RANDOM_UINT_MAX as f32) < params.deletion_ratio as f32 {
+        let genome_length = genome.len() as f32;
+        let initial_length = params.genome_initial_length_min as f32;
+        
+        // Scale insertion probability down as genome grows beyond initial length
+        // At initial length: use normal deletion_ratio
+        // At 2x initial length: insertion probability is halved
+        let length_factor = if genome_length > initial_length {
+            initial_length / genome_length
+        } else {
+            1.0
+        };
+        
+        // Adjusted deletion ratio: higher chance of deletion for longer genomes
+        let adjusted_deletion_ratio = params.deletion_ratio as f32 + (1.0 - length_factor) * (1.0 - params.deletion_ratio as f32);
+        
+        if (random_uint() as f32 / RANDOM_UINT_MAX as f32) < adjusted_deletion_ratio {
             // deletion
             if genome.len() > 1 {
                 let index = random_uint_range(0, genome.len() as u32 - 1) as usize;
                 genome.remove(index);
             }
         } else if genome.len() < params.genome_max_length as usize {
-            // insertion
+            // insertion (probability already reduced via adjusted_deletion_ratio)
             genome.push(make_random_gene());
         }
     }
@@ -449,6 +464,38 @@ pub fn create_wiring_from_genome(nnet: &mut NeuralNet, genome: &Genome, params: 
                 nnet.neurons[neuron_idx].driven = true;
             }
         }
+    }
+    
+    // Deduplicate connections: merge duplicate source-sink pairs by summing weights
+    // This prevents genomes from growing indefinitely by adding redundant connections
+    deduplicate_connections(&mut nnet.connections);
+}
+
+fn deduplicate_connections(connections: &mut Vec<Gene>) {
+    use std::collections::HashMap;
+    
+    // Map key: (sourceType, sourceNum, sinkType, sinkNum) -> accumulated weight
+    let mut connection_map: HashMap<(u8, u8, u8, u8), i32> = HashMap::new();
+    
+    // Sum weights for duplicate connections
+    for conn in connections.iter() {
+        let key = (conn.source_type, conn.source_num, conn.sink_type, conn.sink_num);
+        *connection_map.entry(key).or_insert(0i32) += conn.weight as i32;
+    }
+    
+    // Rebuild connections list with deduplicated entries, clamping weights to i16 range
+    connections.clear();
+    for ((source_type, source_num, sink_type, sink_num), weight_sum) in connection_map {
+        // Clamp weight to i16 range
+        let clamped_weight = weight_sum.max(i16::MIN as i32).min(i16::MAX as i32) as i16;
+        
+        connections.push(Gene {
+            source_type,
+            source_num,
+            sink_type,
+            sink_num,
+            weight: clamped_weight,
+        });
     }
 }
 
