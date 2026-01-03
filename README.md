@@ -2,7 +2,7 @@
 
 ## Status
 
-This is a complete Rust refactoring of the original C++ biosim4 project, renamed to BiosimRust. The Rust implementation maintains full feature parity with the original while providing improved safety, performance, and maintainability through Rust's type system and memory safety guarantees.
+This is a complete Rust refactoring of the original C++ biosim4 project, renamed to BiosimRust. The Rust implementation maintains full feature parity with the original while providing improved safety, performance, and maintainability through Rust's type system and memory safety guarantees. I've also added some features I think compliment the original project. See the release page for the changes.
 
 The original C++ implementation can be found here https://github.com/davidrmiller/biosim4 for reference.
 
