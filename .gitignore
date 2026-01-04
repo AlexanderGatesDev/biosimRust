@@ -1,0 +1,13 @@
+target/*
+images/*
+logs/*
+.DS_Store
+tools/net.txt
+tools/net.svg
+build-all.sh
+release/*
+build-windows.sh
+.cargo/*
+cpp/*
+CImg-3.6.6/*
+Github Release Notes/*
