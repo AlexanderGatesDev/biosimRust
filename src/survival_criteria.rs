@@ -65,7 +65,17 @@ pub fn passed_survival_criterion(
             let max_neighbors = 22u32;
             let radius = 1.5f32;
 
+            // Fail if on border (exact edge)
             if grid.is_border(indiv.loc) {
+                return (false, 0.0);
+            }
+            
+            // Fail if within 1 cell of any edge (buffer zone)
+            // This prevents individuals from huddling near edges
+            if indiv.loc.x <= 1 
+                || indiv.loc.x >= (params.size_x - 2) as i16
+                || indiv.loc.y <= 1 
+                || indiv.loc.y >= (params.size_y - 2) as i16 {
                 return (false, 0.0);
             }
 

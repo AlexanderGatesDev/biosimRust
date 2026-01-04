@@ -72,13 +72,38 @@ pub fn execute_actions(
             let mut level = action_levels[kill_idx];
             level = (level.tanh() + 1.0) / 2.0;
             level *= responsiveness_adjusted;
-            if level > KILL_THRESHOLD && prob2bool((level - ACTION_MIN) / ACTION_RANGE) {
+            
+            if level > KILL_THRESHOLD {
                 let other_loc = indiv.loc + indiv.last_move_dir.as_normalized_coord();
                 if grid.is_in_bounds(other_loc) && grid.is_occupied_at(other_loc) {
                     if let Some(target_indiv) = peeps.get_indiv(other_loc, grid) {
                         let distance = (indiv.loc - target_indiv.loc).length();
-                        if distance == 1 {
-                            peeps.queue_for_death(target_indiv);
+                        if distance == 1 && target_indiv.alive && target_indiv.index != indiv.index {
+                            // Calculate genetic similarity (0.0 = different, 1.0 = identical)
+                            let genetic_similarity = crate::genome_compare::genome_similarity(
+                                &indiv.genome,
+                                &target_indiv.genome,
+                                params,
+                            );
+                            
+                            // Calculate base kill probability
+                            let base_kill_prob = (level - ACTION_MIN) / ACTION_RANGE;
+                            
+                            // Apply kin protection: reduce kill probability for similar genomes
+                            // Use exponential reduction for stronger protection at high similarity
+                            // Formula: adjusted_prob = base_prob * (1.0 - similarity)^(1.0 / (protection + 0.1))
+                            // This provides exponential protection: at similarity=0.9, protection=0.8: (1-0.9)^(1/0.9) = 0.1^1.11 ≈ 0.08
+                            // When similarity = 1.0: adjusted_prob = 0 (never kill, regardless of protection)
+                            // When similarity = 0.0: adjusted_prob = base_prob (no reduction)
+                            // Higher protection values = stronger exponential reduction
+                            let kin_protection = params.kill_kin_protection;
+                            let similarity_factor = (1.0 - genetic_similarity).powf(1.0 / (kin_protection + 0.1));
+                            let adjusted_kill_prob = base_kill_prob * similarity_factor;
+                            
+                            // Check kill probability with kin protection applied
+                            if adjusted_kill_prob > 0.0 && prob2bool(adjusted_kill_prob) {
+                                peeps.queue_for_death(target_indiv);
+                            }
                         }
                     }
                 }

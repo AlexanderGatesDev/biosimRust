@@ -27,6 +27,7 @@ pub struct Params {
     pub gene_insertion_deletion_rate: f64,
     pub deletion_ratio: f64,
     pub kill_enable: bool,
+    pub kill_kin_protection: f32,
     pub sexual_reproduction: bool,
     pub choose_parents_by_fitness: bool,
     pub population_sensor_radius: f32,
@@ -91,6 +92,7 @@ impl Default for Params {
             gene_insertion_deletion_rate: 0.0,
             deletion_ratio: 0.5,
             kill_enable: false,
+            kill_kin_protection: 0.8,
             sexual_reproduction: true,
             choose_parents_by_fitness: true,
             population_sensor_radius: 2.5,
@@ -292,6 +294,9 @@ impl ParamManager {
             }
             "killenable" if is_bool => {
                 self.priv_params.kill_enable = b_val;
+            }
+            "killkinprotection" if is_float && d_val >= 0.0 && d_val <= 1.0 => {
+                self.priv_params.kill_kin_protection = d_val as f32;
             }
             "sexualreproduction" if is_bool => {
                 self.priv_params.sexual_reproduction = b_val;
