@@ -10,6 +10,9 @@ use crate::random::{random_uint, RANDOM_UINT_MAX};
 use crate::simulator::CHALLENGE_RADIOACTIVE_WALLS;
 use crate::simulator::CHALLENGE_TOUCH_ANY_WALL;
 use crate::simulator::CHALLENGE_LOCATION_SEQUENCE;
+use crate::metabolic_cost::update_metabolic_energy;
+use crate::homeostasis::update_homeostasis;
+use rayon::prelude::*;
 
 pub fn end_of_sim_step(
     sim_step: u32,
@@ -77,6 +80,68 @@ pub fn end_of_sim_step(
         }
     }
 
+    // Update homeostatic plasticity for all alive individuals (Phase 3)
+    // This stabilizes networks after duplication events by adjusting connection weights
+    // Parallelized for performance using unsafe pointers (same pattern as simulator.rs)
+    if params.homeostasis_enabled {
+        let peeps_ptr = peeps as *mut Peeps;
+        let peeps_ptr_usize = peeps_ptr as usize;
+        let param_manager_ptr = params as *const Params;
+        let param_manager_ptr_usize = param_manager_ptr as usize;
+        
+        (1..=params.population).into_par_iter().for_each(|index| {
+            unsafe {
+                let peeps_ptr = peeps_ptr_usize as *mut Peeps;
+                let param_manager_ptr = param_manager_ptr_usize as *const Params;
+                let params_ref = &*param_manager_ptr;
+                
+                let indiv_ptr = (*peeps_ptr).individuals.as_mut_ptr().add(index as usize);
+                let indiv = &mut *indiv_ptr;
+                if indiv.alive {
+                    update_homeostasis(indiv, params_ref);
+                }
+            }
+        });
+    }
+    
+    // Update metabolic energy for all alive individuals (Phase 2)
+    // This applies energy costs based on network size and activity
+    // Parallelized for performance - collect death indices in parallel
+    let peeps_ptr = peeps as *mut Peeps;
+    let peeps_ptr_usize = peeps_ptr as usize;
+    let param_manager_ptr = params as *const Params;
+    let param_manager_ptr_usize = param_manager_ptr as usize;
+    
+    let indices_to_kill: Vec<u16> = (1..=params.population)
+        .into_par_iter()
+        .filter_map(|index| {
+            unsafe {
+                let peeps_ptr = peeps_ptr_usize as *mut Peeps;
+                let param_manager_ptr = param_manager_ptr_usize as *const Params;
+                let params_ref = &*param_manager_ptr;
+                
+                let indiv_ptr = (*peeps_ptr).individuals.as_mut_ptr().add(index as usize);
+                let indiv = &mut *indiv_ptr;
+                if indiv.alive {
+                    let died = update_metabolic_energy(indiv, params_ref);
+                    if died {
+                        return Some(index as u16);
+                    }
+                }
+            }
+            None
+        })
+        .collect();
+    // Queue deaths after mutable borrow is released
+    // Only queue if still alive (safety check)
+    for index in indices_to_kill {
+        if let Some(indiv) = peeps.get(index) {
+            if indiv.alive {
+                peeps.queue_for_death(indiv);
+            }
+        }
+    }
+    
     peeps.drain_death_queue(grid);
     peeps.drain_move_queue(grid);
     signals.fade(0, params);

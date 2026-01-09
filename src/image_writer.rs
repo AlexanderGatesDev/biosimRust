@@ -282,7 +282,7 @@ fn draw_challenge_area(
         CHALLENGE_CIRCLE => {
             let center_x = (params.size_x / 4) as f32;
             let center_y = (params.size_y / 4) as f32;
-            let radius = params.size_x as f32 / 4.0;
+            let radius = params.size_x as f32 / 6.4;
             draw_circle_outline(img, params, width, height, center_x, center_y, radius, challenge_color, opacity, barrier_locs);
         }
         
@@ -313,7 +313,7 @@ fn draw_challenge_area(
             // Draw just the outline for unweighted challenge
             let center_x = (params.size_x / 2) as f32;
             let center_y = (params.size_y / 2) as f32;
-            let radius = params.size_x as f32 / 3.0;
+            let radius = params.size_x as f32 / 4.8;
             draw_circle_outline(img, params, width, height, center_x, center_y, radius, challenge_color, opacity, barrier_locs);
         }
         

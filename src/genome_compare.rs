@@ -159,28 +159,10 @@ pub fn genome_similarity(g1: &Genome, g2: &Genome, params: &Params) -> f32 {
     let similarity;
     
     // If genomes have different lengths, use Jaro-Winkler (method 0) which handles unequal lengths
+    // No artificial length penalties - let natural selection handle genome length evolution
+    // Length constraints should come from metabolic costs (Phase 2), not algorithmic penalties
     if g1.len() != g2.len() {
-        similarity = jaro_winkler_distance(g1, g2);
-        
-        // Add length penalty to prevent convergence to extreme lengths
-        // Penalize based on relative length difference
-        let len1 = g1.len() as f32;
-        let len2 = g2.len() as f32;
-        let length_ratio = len1.min(len2) / len1.max(len2);
-        
-        // Add absolute length penalty: penalize genomes that deviate from initial length
-        // This creates selection pressure to maintain lengths near the starting value
-        let initial_length = params.genome_initial_length_min as f32;
-        let avg_length = (len1 + len2) / 2.0;
-        let length_deviation = (avg_length - initial_length).abs() / initial_length;
-        // Penalty increases quadratically with deviation (0.0 at initial, 1.0 at 2x initial)
-        let absolute_penalty = (length_deviation / 2.0).min(1.0);
-        let absolute_bonus = 1.0 - absolute_penalty;
-        
-        // Apply penalties: 30% similarity, 35% relative length ratio, 35% absolute length bonus
-        // Strengthened length penalties to better prevent genome length growth
-        // This triple penalty system prevents both relative divergence and absolute growth
-        return similarity * 0.3 + length_ratio * 0.35 + absolute_bonus * 0.35;
+        return jaro_winkler_distance(g1, g2);
     }
     
     similarity = match params.genome_comparison_method {

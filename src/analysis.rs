@@ -10,6 +10,8 @@ use crate::peeps::Peeps;
 use crate::signals::Signals;
 use crate::random::random_uint_range;
 use crate::genome_compare::genetic_diversity;
+use crate::speciation::calculate_species_statistics;
+use std::sync::Mutex;
 
 // This converts sensor numbers to descriptive strings.
 pub fn sensor_name(sensor: Sensor) -> &'static str {
@@ -179,8 +181,8 @@ pub fn print_igraph_edge_list(indiv: &Indiv) {
             print!("N{}", conn.sink_num);
         }
 
-        let weight = conn.weight; // Copy to avoid packed struct reference issue
-        println!(" {}", weight);
+        // Phase 4: Connection now uses f32 weight directly
+        println!(" {}", conn.weight);
     }
 }
 
@@ -206,8 +208,15 @@ pub fn average_genome_length(peeps: &Peeps, params: &Params) -> f32 {
     sum as f32 / number_samples as f32
 }
 
+// Track previous generation's species count for calculating new/extinct species
+static PREVIOUS_SPECIES_COUNT: Mutex<u32> = Mutex::new(0);
+
 // The epoch log contains one line per generation in a format that can be
 // fed to graphlog.gp to produce a chart of the simulation progress.
+// Format: generation survivors diversity avg_genome_length murder_count [species_stats...]
+// When speciation is enabled, adds 8 more columns:
+//   num_species avg_species_size largest_species smallest_species 
+//   new_species extinct_species avg_species_age avg_stagnation
 pub fn append_epoch_log(
     generation: u32,
     number_survivors: u32,
@@ -222,6 +231,9 @@ pub fn append_epoch_log(
         if let Ok(mut file) = std::fs::File::create(&log_path) {
             let _ = file.write_all(b"");
         }
+        // Reset previous species count
+        let mut prev_count = PREVIOUS_SPECIES_COUNT.lock().unwrap();
+        *prev_count = 0;
     }
 
     // Append to file
@@ -232,12 +244,51 @@ pub fn append_epoch_log(
     {
         let diversity = genetic_diversity(peeps, params);
         let avg_length = average_genome_length(peeps, params);
-        writeln!(
-            file,
-            "{} {} {} {} {}",
-            generation, number_survivors, diversity, avg_length, murder_count
-        )
-        .ok();
+        
+        // Get previous species count for calculating new/extinct species
+        let previous_species_count = {
+            let prev_count = PREVIOUS_SPECIES_COUNT.lock().unwrap();
+            *prev_count
+        };
+        
+        if params.speciation_enabled {
+            // Calculate species statistics
+            let species_stats = calculate_species_statistics(generation, previous_species_count);
+            
+            // Update previous species count for next generation
+            {
+                let mut prev_count = PREVIOUS_SPECIES_COUNT.lock().unwrap();
+                *prev_count = species_stats.num_species;
+            }
+            
+            // Write 13-column format with species statistics
+            writeln!(
+                file,
+                "{} {} {} {} {} {} {} {} {} {} {} {} {}",
+                generation,
+                number_survivors,
+                diversity,
+                avg_length,
+                murder_count,
+                species_stats.num_species,
+                species_stats.avg_species_size,
+                species_stats.largest_species,
+                species_stats.smallest_species,
+                species_stats.new_species,
+                species_stats.extinct_species,
+                species_stats.avg_species_age,
+                species_stats.avg_stagnation
+            )
+            .ok();
+        } else {
+            // Write 5-column format (backward compatible)
+            writeln!(
+                file,
+                "{} {} {} {} {}",
+                generation, number_survivors, diversity, avg_length, murder_count
+            )
+            .ok();
+        }
     }
 }
 

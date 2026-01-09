@@ -32,15 +32,67 @@ impl Gene {
 
 pub type Genome = Vec<Gene>;
 
+// Phase 4: Enhanced Connection structure for parallel synapses and dendritic computation
+#[derive(Debug, Clone)]
+pub struct Connection {
+    pub source_type: u8,         // SENSOR or NEURON
+    pub source_num: u8,          // Source neuron/sensor index
+    pub sink_type: u8,           // NEURON or ACTION
+    pub sink_num: u8,            // Sink neuron/action index
+    pub weight: f32,             // Connection weight (f32 for precision, Phase 4)
+    pub dendrite_id: u16,        // Dendrite identifier for grouping synapses (Phase 4)
+    pub receptor_type: u8,       // Receptor type (0=excitatory, 1=inhibitory, Phase 4)
+    pub plasticity_trace: f32,   // STDP trace for future plasticity (Phase 4)
+}
+
+impl Connection {
+    /// Create a new connection from a gene
+    pub fn from_gene(gene: &Gene, dendrite_id: u16) -> Self {
+        // Determine receptor type from weight sign
+        // Positive = excitatory, negative = inhibitory
+        let receptor_type = if gene.weight >= 0 { 0 } else { 1 };
+        
+        Connection {
+            source_type: gene.source_type,
+            source_num: gene.source_num,
+            sink_type: gene.sink_type,
+            sink_num: gene.sink_num,
+            weight: gene.weight_as_float(),
+            dendrite_id,
+            receptor_type,
+            plasticity_trace: 0.0,
+        }
+    }
+    
+    /// Convert connection back to gene (for genome representation)
+    pub fn to_gene(&self) -> Gene {
+        // Convert f32 weight back to i16 representation
+        let weight_i16 = (self.weight * 8192.0).round() as i32;
+        let clamped_weight = weight_i16.max(i16::MIN as i32).min(i16::MAX as i32) as i16;
+        
+        Gene {
+            source_type: self.source_type,
+            source_num: self.source_num,
+            sink_type: self.sink_type,
+            sink_num: self.sink_num,
+            weight: clamped_weight,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Neuron {
     pub output: f32,
     pub driven: bool,  // undriven neurons have fixed output values
+    // Homeostatic plasticity fields (Phase 3)
+    pub target_firing_rate: f32,        // Target firing rate (0.0 to 1.0)
+    pub current_firing_rate: f32,        // Current average firing rate (exponential moving average)
+    pub homeostatic_scale: f32,         // Multiplicative scaling factor for incoming weights
 }
 
 #[derive(Debug, Clone)]
 pub struct NeuralNet {
-    pub connections: Vec<Gene>,  // connections are equivalent to genes
+    pub connections: Vec<Connection>,  // Phase 4: Use Connection instead of Gene
     pub neurons: Vec<Neuron>,
 }
 
@@ -225,29 +277,19 @@ pub fn random_insert_deletion(genome: &mut Genome, params: &Params) {
     
     let probability = params.gene_insertion_deletion_rate as f32;
     if (random_uint() as f32 / RANDOM_UINT_MAX as f32) < probability {
-        let genome_length = genome.len() as f32;
-        let initial_length = params.genome_initial_length_min as f32;
+        // Use constant deletion_ratio regardless of genome length
+        // No artificial scaling - let natural selection and metabolic costs
+        // (Phase 2) regulate genome length evolution
+        let deletion_ratio = params.deletion_ratio as f32;
         
-        // Scale insertion probability down as genome grows beyond initial length
-        // At initial length: use normal deletion_ratio
-        // At 2x initial length: insertion probability is halved
-        let length_factor = if genome_length > initial_length {
-            initial_length / genome_length
-        } else {
-            1.0
-        };
-        
-        // Adjusted deletion ratio: higher chance of deletion for longer genomes
-        let adjusted_deletion_ratio = params.deletion_ratio as f32 + (1.0 - length_factor) * (1.0 - params.deletion_ratio as f32);
-        
-        if (random_uint() as f32 / RANDOM_UINT_MAX as f32) < adjusted_deletion_ratio {
+        if (random_uint() as f32 / RANDOM_UINT_MAX as f32) < deletion_ratio {
             // deletion
             if genome.len() > 1 {
                 let index = random_uint_range(0, genome.len() as u32 - 1) as usize;
                 genome.remove(index);
             }
         } else if genome.len() < params.genome_max_length as usize {
-            // insertion (probability already reduced via adjusted_deletion_ratio)
+            // insertion
             genome.push(make_random_gene());
         }
     }
@@ -392,24 +434,42 @@ pub fn create_wiring_from_genome(nnet: &mut NeuralNet, genome: &Genome, params: 
     
     nnet.connections.clear();
     
+    // Phase 4: Assign dendrite IDs during wiring
+    // Group connections by sink neuron to assign dendrite IDs
+    // Each unique source->sink pair gets its own dendrite ID
+    let mut dendrite_counter: u16 = 0;
+    let mut dendrite_map: std::collections::HashMap<(u8, u8, u8, u8), u16> = std::collections::HashMap::new();
+    
+    // Helper function to get or assign dendrite ID
+    let mut get_dendrite_id = |source_type: u8, source_num: u8, sink_type: u8, sink_num: u8| -> u16 {
+        let key = (source_type, source_num, sink_type, sink_num);
+        *dendrite_map.entry(key).or_insert_with(|| {
+            let id = dendrite_counter;
+            dendrite_counter += 1;
+            id
+        })
+    };
+    
     // First, connections from sensor or neuron to a neuron
     for conn in &connection_list {
         if conn.sink_type == NEURON {
-            let mut new_conn = *conn;
+            let mut new_gene = *conn;
             if let Some(node) = node_map.get(&(conn.sink_num as u16)) {
                 // Only add if the neuron wasn't culled (has valid remapped_number)
                 if node.remapped_number != 0xffff {
-                    new_conn.sink_num = node.remapped_number as u8;
-                    if new_conn.source_type == NEURON {
+                    new_gene.sink_num = node.remapped_number as u8;
+                    if new_gene.source_type == NEURON {
                         if let Some(source_node) = node_map.get(&(conn.source_num as u16)) {
                             if source_node.remapped_number != 0xffff {
-                                new_conn.source_num = source_node.remapped_number as u8;
-                                nnet.connections.push(new_conn);
+                                new_gene.source_num = source_node.remapped_number as u8;
+                                let dendrite_id = get_dendrite_id(new_gene.source_type, new_gene.source_num, new_gene.sink_type, new_gene.sink_num);
+                                nnet.connections.push(Connection::from_gene(&new_gene, dendrite_id));
                             }
                         }
                     } else {
                         // Source is a sensor, so it's always valid
-                        nnet.connections.push(new_conn);
+                        let dendrite_id = get_dendrite_id(new_gene.source_type, new_gene.source_num, new_gene.sink_type, new_gene.sink_num);
+                        nnet.connections.push(Connection::from_gene(&new_gene, dendrite_id));
                     }
                 }
             }
@@ -420,19 +480,21 @@ pub fn create_wiring_from_genome(nnet: &mut NeuralNet, genome: &Genome, params: 
     // These should ALWAYS be preserved (sensor-to-action don't involve neurons)
     for conn in &connection_list {
         if conn.sink_type == ACTION {
-            let mut new_conn = *conn;
-            if new_conn.source_type == NEURON {
+            let mut new_gene = *conn;
+            if new_gene.source_type == NEURON {
                 // Source is a neuron - only add if the neuron wasn't culled
                 if let Some(node) = node_map.get(&(conn.source_num as u16)) {
                     if node.remapped_number != 0xffff {
-                        new_conn.source_num = node.remapped_number as u8;
-                        nnet.connections.push(new_conn);
+                        new_gene.source_num = node.remapped_number as u8;
+                        let dendrite_id = get_dendrite_id(new_gene.source_type, new_gene.source_num, new_gene.sink_type, new_gene.sink_num);
+                        nnet.connections.push(Connection::from_gene(&new_gene, dendrite_id));
                     }
                 }
             } else {
                 // Source is a sensor - always add (sensor-to-action connections)
                 // These are never culled because they don't involve neurons
-                nnet.connections.push(new_conn);
+                let dendrite_id = get_dendrite_id(new_gene.source_type, new_gene.source_num, new_gene.sink_type, new_gene.sink_num);
+                nnet.connections.push(Connection::from_gene(&new_gene, dendrite_id));
             }
         }
     }
@@ -453,6 +515,10 @@ pub fn create_wiring_from_genome(nnet: &mut NeuralNet, genome: &Genome, params: 
         nnet.neurons.push(Neuron {
             output: initial_neuron_output(),
             driven,
+            // Initialize homeostatic fields (Phase 3)
+            target_firing_rate: params.target_firing_rate,
+            current_firing_rate: 0.0,
+            homeostatic_scale: 1.0,  // Start with no scaling
         });
     }
     
@@ -466,35 +532,42 @@ pub fn create_wiring_from_genome(nnet: &mut NeuralNet, genome: &Genome, params: 
         }
     }
     
-    // Deduplicate connections: merge duplicate source-sink pairs by summing weights
-    // This prevents genomes from growing indefinitely by adding redundant connections
-    deduplicate_connections(&mut nnet.connections);
+    // Conditionally deduplicate connections based on configuration
+    // When allow_duplicate_connections is true, duplicate connections are preserved
+    // to enable copy number effects (gene dosage). When false, duplicates are merged
+    // by summing weights (legacy behavior for backward compatibility).
+    if !params.allow_duplicate_connections {
+        deduplicate_connections_phase4(&mut nnet.connections);
+    }
 }
 
-fn deduplicate_connections(connections: &mut Vec<Gene>) {
+// Phase 4: Updated deduplication for Connection struct
+fn deduplicate_connections_phase4(connections: &mut Vec<Connection>) {
     use std::collections::HashMap;
     
-    // Map key: (sourceType, sourceNum, sinkType, sinkNum) -> accumulated weight
-    let mut connection_map: HashMap<(u8, u8, u8, u8), i32> = HashMap::new();
+    // Map key: (sourceType, sourceNum, sinkType, sinkNum) -> accumulated weight and dendrite_id
+    let mut connection_map: HashMap<(u8, u8, u8, u8), (f32, u16, u8)> = HashMap::new();
     
     // Sum weights for duplicate connections
     for conn in connections.iter() {
         let key = (conn.source_type, conn.source_num, conn.sink_type, conn.sink_num);
-        *connection_map.entry(key).or_insert(0i32) += conn.weight as i32;
+        let entry = connection_map.entry(key).or_insert((0.0, conn.dendrite_id, conn.receptor_type));
+        entry.0 += conn.weight; // Sum weights
+        // Keep first dendrite_id and receptor_type encountered
     }
     
-    // Rebuild connections list with deduplicated entries, clamping weights to i16 range
+    // Rebuild connections list with deduplicated entries
     connections.clear();
-    for ((source_type, source_num, sink_type, sink_num), weight_sum) in connection_map {
-        // Clamp weight to i16 range
-        let clamped_weight = weight_sum.max(i16::MIN as i32).min(i16::MAX as i32) as i16;
-        
-        connections.push(Gene {
+    for ((source_type, source_num, sink_type, sink_num), (weight_sum, dendrite_id, receptor_type)) in connection_map {
+        connections.push(Connection {
             source_type,
             source_num,
             sink_type,
             sink_num,
-            weight: clamped_weight,
+            weight: weight_sum,
+            dendrite_id,
+            receptor_type,
+            plasticity_trace: 0.0,
         });
     }
 }

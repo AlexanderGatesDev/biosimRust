@@ -25,7 +25,7 @@ pub fn passed_survival_criterion(
                 (params.size_x / 4) as i16,
                 (params.size_y / 4) as i16,
             );
-            let radius = params.size_x as f32 / 4.0;
+            let radius = params.size_x as f32 / 6.4;
 
             let offset = safe_center - indiv.loc;
             let distance = offset.length() as f32;
@@ -115,7 +115,7 @@ pub fn passed_survival_criterion(
                 (params.size_x / 2) as i16,
                 (params.size_y / 2) as i16,
             );
-            let radius = params.size_x as f32 / 3.0;
+            let radius = params.size_x as f32 / 4.8;
 
             let offset = safe_center - indiv.loc;
             let distance = offset.length() as f32;

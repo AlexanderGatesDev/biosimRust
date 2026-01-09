@@ -68,6 +68,34 @@ pub struct Params {
     pub graph_log_update_command: String,
     pub parameter_change_generation_number: u32,
     pub fitness_length_normalization: f32,
+    pub allow_duplicate_connections: bool,
+    // Metabolic regularization parameters (Phase 2)
+    pub metabolic_cost_per_synapse: f32,    // Static maintenance cost per synapse (default: 0.0001)
+    pub metabolic_cost_per_spike: f32,      // Dynamic signaling cost per neuron activation (default: 0.00001)
+    pub initial_energy: f32,               // DEPRECATED: Now automatically set to steps_per_generation (kept for backward compatibility)
+    pub energy_reward_per_success: f32,    // Energy gained from survival (default: 0.1)
+    // Homeostatic plasticity parameters (Phase 3)
+    pub homeostasis_enabled: bool,          // Enable homeostatic plasticity (default: true)
+    pub homeostasis_alpha: f32,            // Learning rate for homeostatic updates (default: 0.01)
+    pub target_firing_rate: f32,           // Target firing rate for neurons (default: 0.1)
+    pub firing_rate_window: u32,           // Window size for moving average (default: 100)
+    // Multi-objective optimization parameters (Phase 5)
+    pub nsga2_enabled: bool,               // Enable NSGA-II selection (default: false)
+    // Dendritic integration parameters (Phase 4.3)
+    pub dendritic_enabled: bool,           // Enable dendritic computation (default: false)
+    pub dendritic_exponent: f32,           // Integration exponent: 1.0=linear, 2.0=quadratic, 0.5=sublinear (default: 2.0)
+    pub dendritic_separate_excitatory_inhibitory: bool, // Use different exponents for excitatory/inhibitory (default: true)
+    pub dendritic_inhibitory_exponent: f32, // Exponent for inhibitory inputs (default: 0.5)
+    // Speciation parameters (Phase 6)
+    pub speciation_enabled: bool,              // Enable speciation (default: false)
+    pub compatibility_threshold: f32,          // Distance threshold for same species (default: 3.0)
+    pub excess_coefficient: f32,               // Weight for excess genes (default: 1.0)
+    pub disjoint_coefficient: f32,             // Weight for disjoint genes (default: 1.0)
+    pub weight_coefficient: f32,               // Weight for weight differences (default: 0.4)
+    pub species_stagnation_threshold: u32,     // Generations before species extinction (default: 15)
+    pub min_species_size: usize,               // Minimum members to keep species alive (default: 1)
+    pub max_species_size: usize,               // Maximum members per species (default: 50)
+    pub species_elite_fraction: f32,          // Fraction of species to preserve as elite (default: 0.2)
 }
 
 impl Default for Params {
@@ -123,7 +151,35 @@ impl Default for Params {
             rng_seed: 12345678,
             graph_log_update_command: "/usr/bin/gnuplot --persist ./tools/graphlog.gp".to_string(),
             parameter_change_generation_number: 0,
-            fitness_length_normalization: 0.03,
+            fitness_length_normalization: 0.001, // Reduced from 0.03 - minimal artificial penalty, let metabolic costs (Phase 2) handle length
+            allow_duplicate_connections: true, // Allow duplicate connections for copy number effects
+            // Metabolic regularization defaults (Phase 2)
+            metabolic_cost_per_synapse: 0.0001,  // Small cost per synapse for maintenance
+            metabolic_cost_per_spike: 0.00001,   // Very small cost per neuron activation
+            initial_energy: 300.0,                // DEPRECATED: Overridden by steps_per_generation in code
+            energy_reward_per_success: 0.1,      // Reward for surviving each generation
+            // Homeostatic plasticity defaults (Phase 3)
+            homeostasis_enabled: true,            // Enable homeostatic plasticity
+            homeostasis_alpha: 0.01,             // Learning rate for weight scaling
+            target_firing_rate: 0.1,            // Target firing rate (10% of steps)
+            firing_rate_window: 100,             // Moving average window size
+            // Multi-objective optimization defaults (Phase 5)
+            nsga2_enabled: false,                // Disable NSGA-II by default (enable for diversity)
+            // Dendritic integration defaults (Phase 4.3)
+            dendritic_enabled: false,            // Disable by default (enable for biological realism)
+            dendritic_exponent: 2.0,             // Quadratic integration for excitatory
+            dendritic_separate_excitatory_inhibitory: true, // Use different exponents
+            dendritic_inhibitory_exponent: 0.5,  // Sublinear integration for inhibitory
+            // Speciation defaults (Phase 6)
+            speciation_enabled: false,           // Disable by default (enable for innovation protection)
+            compatibility_threshold: 3.0,        // NEAT default threshold
+            excess_coefficient: 1.0,             // NEAT default
+            disjoint_coefficient: 1.0,          // NEAT default
+            weight_coefficient: 0.4,            // NEAT default
+            species_stagnation_threshold: 15,    // Generations before extinction
+            min_species_size: 1,                // Minimum members
+            max_species_size: 50,               // Maximum members per species
+            species_elite_fraction: 0.2,        // 20% elite preservation
         }
     }
 }
@@ -292,6 +348,72 @@ impl ParamManager {
             "fitnesslengthnormalization" if is_float && d_val >= 0.0 => {
                 self.priv_params.fitness_length_normalization = d_val as f32;
             }
+            "metaboliccostpersynapse" if is_float && d_val >= 0.0 => {
+                self.priv_params.metabolic_cost_per_synapse = d_val as f32;
+            }
+            "metaboliccostperspike" if is_float && d_val >= 0.0 => {
+                self.priv_params.metabolic_cost_per_spike = d_val as f32;
+            }
+            // NOTE: "initialenergy" parameter is deprecated and ignored
+            // Energy is now automatically set to steps_per_generation in the code
+            // This ensures individuals have enough energy regardless of step count
+            "energyrewardpersuccess" if is_float && d_val >= 0.0 => {
+                self.priv_params.energy_reward_per_success = d_val as f32;
+            }
+            "homeostasisenabled" if is_bool => {
+                self.priv_params.homeostasis_enabled = b_val;
+            }
+            "homeostasisalpha" if is_float && d_val > 0.0 && d_val <= 1.0 => {
+                self.priv_params.homeostasis_alpha = d_val as f32;
+            }
+            "targetfiringrate" if is_float && d_val >= 0.0 && d_val <= 1.0 => {
+                self.priv_params.target_firing_rate = d_val as f32;
+            }
+            "firingratewindow" if is_uint && u_val > 0 && u_val <= 10000 => {
+                self.priv_params.firing_rate_window = u_val;
+            }
+            "nsga2enabled" if is_bool => {
+                self.priv_params.nsga2_enabled = b_val;
+            }
+            "dendritickenabled" if is_bool => {
+                self.priv_params.dendritic_enabled = b_val;
+            }
+            "dendriticexponent" if is_float && d_val > 0.0 && d_val <= 10.0 => {
+                self.priv_params.dendritic_exponent = d_val as f32;
+            }
+            "dendriticseparateexcitatoryinhibitory" if is_bool => {
+                self.priv_params.dendritic_separate_excitatory_inhibitory = b_val;
+            }
+            "dendriticinhibitoryexponent" if is_float && d_val > 0.0 && d_val <= 10.0 => {
+                self.priv_params.dendritic_inhibitory_exponent = d_val as f32;
+            }
+            "speciationenabled" if is_bool => {
+                self.priv_params.speciation_enabled = b_val;
+            }
+            "compatibilitythreshold" if is_float && d_val > 0.0 => {
+                self.priv_params.compatibility_threshold = d_val as f32;
+            }
+            "excesscoefficient" if is_float && d_val >= 0.0 => {
+                self.priv_params.excess_coefficient = d_val as f32;
+            }
+            "disjointcoefficient" if is_float && d_val >= 0.0 => {
+                self.priv_params.disjoint_coefficient = d_val as f32;
+            }
+            "weightcoefficient" if is_float && d_val >= 0.0 => {
+                self.priv_params.weight_coefficient = d_val as f32;
+            }
+            "speciesstagnationthreshold" if is_uint && u_val > 0 => {
+                self.priv_params.species_stagnation_threshold = u_val;
+            }
+            "minspeciessize" if is_uint && u_val > 0 => {
+                self.priv_params.min_species_size = u_val as usize;
+            }
+            "maxspeciessize" if is_uint && u_val > 0 => {
+                self.priv_params.max_species_size = u_val as usize;
+            }
+            "specieselitefraction" if is_float && d_val >= 0.0 && d_val <= 1.0 => {
+                self.priv_params.species_elite_fraction = d_val as f32;
+            }
             "killenable" if is_bool => {
                 self.priv_params.kill_enable = b_val;
             }
@@ -303,6 +425,9 @@ impl ParamManager {
             }
             "chooseparentsbyfitness" if is_bool => {
                 self.priv_params.choose_parents_by_fitness = b_val;
+            }
+            "allowduplicateconnections" if is_bool => {
+                self.priv_params.allow_duplicate_connections = b_val;
             }
             "populationsensorradius" if is_float && d_val > 0.0 => {
                 self.priv_params.population_sensor_radius = d_val as f32;

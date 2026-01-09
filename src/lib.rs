@@ -19,6 +19,11 @@ pub mod end_of_generation;
 pub mod end_of_sim_step;
 pub mod survival_criteria;
 pub mod spawn_new_generation;
+pub mod metabolic_cost;
+pub mod homeostasis;
+pub mod multi_objective;
+pub mod dendritic;
+pub mod speciation;
 
 pub use basic_types::*;
 pub use random::*;

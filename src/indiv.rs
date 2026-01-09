@@ -20,6 +20,11 @@ pub struct Indiv {
     pub long_probe_dist: u32,  // distance for long forward probe for obstructions
     pub last_move_dir: Dir,    // direction of last movement
     pub challenge_bits: u32,   // modified when the indiv accomplishes some task
+    // Metabolic energy tracking (Phase 2)
+    pub metabolic_energy: f32,        // Current energy level (0.0 = death)
+    pub metabolic_cost_accumulated: f32, // Total cost accumulated this generation
+    pub spike_count: u32,             // Total number of neuron activations this generation
+    pub spikes_this_step: u32,        // Number of spikes in current step (for per-step cost)
 }
 
 impl Indiv {
@@ -40,6 +45,10 @@ impl Indiv {
             long_probe_dist: 0,
             last_move_dir: Dir::default(),
             challenge_bits: 0,
+            metabolic_energy: 300.0,  // Default to 300 (will be set properly in initialize())
+            metabolic_cost_accumulated: 0.0,
+            spike_count: 0,
+            spikes_this_step: 0,
         }
     }
 
@@ -55,6 +64,13 @@ impl Indiv {
         self.long_probe_dist = params.long_probe_distance;
         self.challenge_bits = 0;
         self.genome = genome;
+        // Initialize metabolic energy to steps_per_generation
+        // This ensures individuals have enough energy to survive the full generation
+        // regardless of how many steps the user configures
+        self.metabolic_energy = params.steps_per_generation as f32;
+        self.metabolic_cost_accumulated = 0.0;
+        self.spike_count = 0;
+        self.spikes_this_step = 0;
         self.create_wiring_from_genome(params);
     }
 
